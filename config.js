@@ -27,6 +27,26 @@ const PROXY_BASE_URL = window.WNBA_PROXY_BASE_URL || "http://localhost:8788";
 const SPORTSDATA_API_KEY = "f2c686d441914b7d9ee12db47c7f1e00";
 const SPORTSDATA_BASE = "https://api.sportsdata.io/v3/wnba";
 
+// The Odds API (https://the-odds-api.com) - used for betting odds (moneyline,
+// spread, total) instead of SportsData.io's /odds endpoint. SportsData.io
+// remains the source for schedule/scores, team & player stats, standings,
+// and injuries; only odds are sourced from here now. Free tier is 500
+// requests/month, so the client fetches the whole slate once per page
+// load/date change rather than per game - see odds-api-client.js.
+//
+// Get your own key at https://the-odds-api.com and replace this placeholder.
+// Same caution as the SportsData.io key: don't ship a real key in
+// client-side JS for anything beyond local/personal use.
+const ODDS_API_KEY = "7cc3cd569bfa99aa62edbefbb46cd348";
+const ODDS_API_BASE = "https://api.the-odds-api.com/v4";
+const ODDS_API_SPORT_KEY = "basketball_wnba";
+const ODDS_API_REGIONS = "us";
+const ODDS_API_MARKETS = "h2h,spreads,totals";
+// Preference order when multiple sportsbooks are returned for the same
+// game - the first one present in a given event's bookmakers array wins.
+// Falls back to whichever bookmaker the event happens to list first.
+const ODDS_API_PREFERRED_BOOKMAKERS = ["draftkings", "fanduel", "betmgm", "williamhill_us"];
+
 const WEIGHTS_STORAGE_KEY = "wnba-monte-carlo-simulator:weights:v1";
 const RATINGS_STORAGE_KEY = "wnba-monte-carlo-simulator:manual-ratings:v1";
 const ODDS_STORAGE_KEY = "wnba-monte-carlo-simulator:manual-odds:v1";
