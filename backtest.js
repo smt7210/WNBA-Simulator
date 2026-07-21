@@ -77,7 +77,11 @@ async function prepareBacktestDataset({ startDate, endDate, onProgress }) {
     const dateStr = (g.DateTime || g.Day || "").slice(0, 10);
     if (!awayAbbr || !homeAbbr || !Number.isFinite(awayScore) || !Number.isFinite(homeScore) || !dateStr) continue;
 
-    const odds = await fetchHistoricalOddsByDate(new Date(dateStr));
+    // The Odds API's historical odds endpoint needs a paid plan tier and
+    // returns null on any failure (see odds-api-client.js), in which case
+    // this falls back to SportsData.io's historical odds like before.
+    const oddsApiRows = await fetchOddsApiHistoricalOdds(dateStr);
+    const odds = oddsApiRows ?? await fetchHistoricalOddsByDate(new Date(dateStr));
     const matchOdds = (odds || []).find(o => (o.AwayTeam === awayAbbr && o.HomeTeam === homeAbbr) || (o.GameId === g.GameID));
     const awayMoneyline = matchOdds ? sdField(matchOdds, ["AwayTeamMoneyLine"]) : NaN;
     const homeMoneyline = matchOdds ? sdField(matchOdds, ["HomeTeamMoneyLine"]) : NaN;
