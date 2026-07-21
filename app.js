@@ -182,7 +182,20 @@ async function hydrateModelData() {
 
   await hydrateRestInfo(teamAbbrs, season);
 
-  const oddsRows = await fetchBettingOddsByDate(state.selectedDate);
+  await hydrateOdds();
+}
+
+/**
+ * Odds now come from The Odds API (odds-api-client.js) instead of
+ * SportsData.io's /odds endpoint. If The Odds API call fails (bad key,
+ * rate limit, plan doesn't cover the market) this falls back to whatever
+ * odds SportsData.io already embedded in the GamesByDate response
+ * (row.odds, set when state.games was built), so a live game card still
+ * shows something rather than going blank.
+ */
+async function hydrateOdds() {
+  const allRows = await fetchOddsApiOdds();
+  const oddsRows = filterOddsApiRowsByDate(allRows, state.selectedDate);
   state.games.forEach(game => {
     const match = oddsRows.find(o => teamNamesMatch(o.AwayTeam, game.away.abbreviation) && teamNamesMatch(o.HomeTeam, game.home.abbreviation));
     if (match) {
@@ -192,6 +205,9 @@ async function hydrateModelData() {
         overUnder: sdField(match, ["OverUnder", "PointSpreadOverUnder"]),
         pointSpread: sdField(match, ["PointSpread"])
       };
+    } else if (!oddsApiStatus.odds.available && game.odds) {
+      // Keep SportsData.io's embedded odds (already on game.odds from
+      // loadSchedule) as the fallback - nothing to do here.
     }
     ensureOdds(game);
   });
@@ -339,7 +355,7 @@ function applyMarketOdds(game, awayExpected, homeExpected) {
   return {
     awayExpected: clamp(modelTotal * blendedAwayShare, 55, 115),
     homeExpected: clamp(modelTotal * (1 - blendedAwayShare), 55, 115),
-    source: "sportsdata.io odds"
+    source: oddsApiStatus.odds.available ? "the odds api" : "sportsdata.io odds (fallback)"
   };
 }
 
@@ -570,7 +586,9 @@ function formatSignedPercent(value) {
 function renderDataSourceStatus() {
   const el = document.getElementById("dataSourceStatus");
   if (!el) return;
-  const lines = Object.entries(sportsDataStatus).map(([key, status]) => `${key}: ${status.available ? "OK" : `unavailable (${status.reason})`}`);
+  const { odds: _unusedSportsDataOdds, ...sportsDataStatusMinusOdds } = sportsDataStatus;
+  const combined = { ...sportsDataStatusMinusOdds, oddsApi: oddsApiStatus.odds };
+  const lines = Object.entries(combined).map(([key, status]) => `${key}: ${status.available ? "OK" : `unavailable (${status.reason})`}`);
   el.textContent = lines.join(" \u00b7 ");
 }
 
