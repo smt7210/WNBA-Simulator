@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#1a0f2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="WNBA Simulator">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>WNBA Monte Carlo Simulator</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Today</p>
+          <h1>WNBA Monte Carlo Simulator</h1>
+        </div>
+        <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh schedule">
+          <span aria-hidden="true">R</span>
+        </button>
+      </header>
+
+      <section class="status-panel" aria-live="polite">
+        <div>
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Loading today's WNBA schedule...</span>
+        </div>
+        <time id="dateLabel"></time>
+      </section>
+
+      <section class="controls">
+        <label class="date-control">
+          Game date
+          <input id="gameDateInput" type="date">
+        </label>
+        <button id="runAllButton" type="button">Run 25,000 sims per game</button>
+      </section>
+
+      <section class="model-note">
+        <strong>Model:</strong> composite Team Rating (Offensive Rating 32%, Defensive Rating 28%, Bench Depth &amp; Star Availability 15%, Rebounding &amp; Ball Control 8%, Rest &amp; Travel 7%, Recent Form 5%, Home Court 5%) computed from SportsData.io WNBA box-score data (possession-based ORtg/DRtg and Four Factors, all derived client-side) plus the live injury and odds feeds. 25,000-trial Monte Carlo per game.
+      </section>
+
+      <section class="weights-panel" id="weightsPanel">
+        <button type="button" class="weights-toggle" id="weightsToggle" aria-expanded="false">Model weights &amp; data sources</button>
+        <div class="weights-body" id="weightsBody" hidden>
+          <p class="weights-hint">Category weights are configurable, not hard-coded. They persist locally and feed directly into the rating math.</p>
+          <div class="weights-grid" id="weightsGrid"></div>
+          <div class="weights-actions">
+            <button type="button" id="saveWeightsButton">Save weights</button>
+            <button type="button" id="resetWeightsButton" class="secondary">Reset to defaults</button>
+          </div>
+          <p class="data-source-status" id="dataSourceStatus"></p>
+        </div>
+      </section>
+
+      <section class="weights-panel" id="backtestPanel">
+        <button type="button" class="weights-toggle" id="backtestToggle" aria-expanded="false">Backtest (Model Calibration)</button>
+        <div class="weights-body" id="backtestBody" hidden>
+          <p class="weights-hint">Runs the current rating model against historical results from SportsData.io. Games on dates with a captured stat snapshot (see server/proxy-server.js) are graded point-in-time; others fall back to today's season stats. Max 60-day range per run.</p>
+          <div class="backtest-inputs">
+            <label>Start date <input type="date" id="backtestStart"></label>
+            <label>End date <input type="date" id="backtestEnd"></label>
+            <button type="button" id="runBacktestButton">Run backtest</button>
+          </div>
+          <p class="backtest-status" id="backtestStatus"></p>
+          <div class="backtest-results" id="backtestResults" hidden></div>
+
+          <hr class="panel-divider">
+          <h4>Weight optimization</h4>
+          <p class="weights-hint">Searches weight profiles against the same date range above and scores each against the target you pick. Uses the fast analytic scorer during search, then re-validates the winner with the full Monte Carlo engine on held-out games.</p>
+          <div class="backtest-inputs">
+            <label>Target <select id="optimizerTarget">
+              <option value="logLoss">Lowest Log Loss</option>
+              <option value="brier">Lowest Brier Score</option>
+              <option value="roi">Maximum ROI</option>
+              <option value="winPct">Highest Accuracy</option>
+            </select></label>
+            <label>Iterations <input type="number" id="optimizerIterations" min="20" max="500" value="150"></label>
+            <button type="button" id="runOptimizerButton">Optimize weights</button>
+          </div>
+          <p class="backtest-status" id="optimizerStatus"></p>
+          <div class="optimizer-results" id="optimizerResults" hidden></div>
+        </div>
+      </section>
+
+      <section id="games" class="games" aria-label="WNBA games"></section>
+    </main>
+
+    <template id="gameTemplate">
+      <article class="game-card">
+        <div class="game-card__header">
+          <div>
+            <p class="game-time"></p>
+            <h2 class="matchup"></h2>
+          </div>
+          <button class="simulate-button" type="button">Simulate</button>
+        </div>
+
+        <div class="teams-grid">
+          <section class="team-panel away-team">
+            <p class="home-away">Away</p>
+            <h3></h3>
+            <div class="team-betting-value away-team-betting-value"></div>
+            <button type="button" class="rating-toggle away-rating-toggle" aria-expanded="false">Rating breakdown</button>
+            <div class="rating-breakdown away-rating-breakdown" hidden></div>
+          </section>
+
+          <section class="team-panel home-team">
+            <p class="home-away">Home</p>
+            <h3></h3>
+            <div class="team-betting-value home-team-betting-value"></div>
+            <button type="button" class="rating-toggle home-rating-toggle" aria-expanded="false">Rating breakdown</button>
+            <div class="rating-breakdown home-rating-breakdown" hidden></div>
+          </section>
+        </div>
+
+        <div class="result-panel">
+          <div class="odds-panel">
+            <label>
+              Away ML
+              <input class="away-ml-input" type="number" inputmode="numeric" step="1" placeholder="-110">
+            </label>
+            <label>
+              Home ML
+              <input class="home-ml-input" type="number" inputmode="numeric" step="1" placeholder="+105">
+            </label>
+          </div>
+          <div class="game-factors">
+            <span class="weather-line">Indoor league - no weather factor.</span>
+            <span class="odds-line">Moneyline odds loading...</span>
+            <span class="factor-line">Rest/travel data loading...</span>
+          </div>
+          <div class="probability-bars">
+            <div class="bar-row">
+              <span class="away-label"></span>
+              <div class="bar-track"><div class="bar-fill away-bar"></div></div>
+              <strong class="away-prob">--</strong>
+            </div>
+            <div class="bar-row">
+              <span class="home-label"></span>
+              <div class="bar-track"><div class="bar-fill home-bar"></div></div>
+              <strong class="home-prob">--</strong>
+            </div>
+          </div>
+          <div class="score-line">
+            <span>Average score</span>
+            <strong class="average-score">Run simulation</strong>
+          </div>
+          <div class="sim-details" hidden>
+            <div class="sim-row"><span>Expected total points</span><strong class="expected-total-runs"></strong></div>
+            <div class="sim-row"><span>Spread cover %</span><strong class="run-line-summary"></strong></div>
+            <div class="sim-row"><span>Total O/U</span><strong class="total-summary"></strong></div>
+            <div class="sim-row"><span>Most common scores</span><strong class="common-scores"></strong></div>
+          </div>
+          <div class="injury-impact" hidden></div>
+        </div>
+      </article>
+    </template>
+
+    <script>window.WNBA_PROXY_BASE_URL = "http://localhost:8788";</script>
+    <script src="config.js"></script>
+    <script src="sportsdata-client.js"></script>
+    <script src="odds-api-client.js"></script>
+    <script src="proxy-client.js"></script>
+    <script src="rating-model.js"></script>
+    <script src="simulation.js"></script>
+    <script src="backtest.js"></script>
+    <script src="weight-optimizer.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
